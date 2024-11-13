@@ -4,12 +4,14 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -55,7 +57,11 @@ class ScanActivity : ComponentActivity() {
 
     private lateinit var bluetoothAdapter: BluetoothAdapter
     private lateinit var bluetoothLeScanner: android.bluetooth.le.BluetoothLeScanner
+
     private val devicesList = mutableStateListOf<ScanResult>()
+
+    private val uniqueMacAddresses = mutableSetOf<String>()
+    private val uniqueDeviceNames = mutableSetOf<String>()
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -70,7 +76,7 @@ class ScanActivity : ComponentActivity() {
     private var isBluetoothEnabled by mutableStateOf(false)
     private var showBluetoothDialog by mutableStateOf(false)
 
-    @SuppressLint("MissingPermission")
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,7 +107,8 @@ class ScanActivity : ComponentActivity() {
                 ) { innerPadding ->
                     MainContentComponent(
                         modifier = Modifier.padding(innerPadding),
-                        onStartScan = { startBluetoothScan() }
+                        onStartScan = { startBluetoothScan() },
+                        devices= devicesList
                     )
                 }
             }
@@ -112,7 +119,7 @@ class ScanActivity : ComponentActivity() {
                     onConfirm = {
                         // Lancer l'intention pour activer le Bluetooth
                         val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                        startActivityForResult(enableBtIntent, 1)
+                        //startActivityForResult(enableBtIntent, 1)
                         showBluetoothDialog = false
                     },
                     onDismiss = {
@@ -134,7 +141,7 @@ class ScanActivity : ComponentActivity() {
             requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
         } else {        // Si toutes les permissions sont déjà accordées
             Toast.makeText(this, "Toutes les permissions sont déjà accordées", Toast.LENGTH_SHORT).show()        // Commencer le scan BLE ou toute autre action
-            //startScan()
+            startScan()
         }
     }
 
@@ -160,7 +167,41 @@ class ScanActivity : ComponentActivity() {
             )
         }
     }
+
+    private fun startScan() {
+        bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
+        devicesList.clear() // Clear previous scan results
+        bluetoothLeScanner.startScan(scanCallback)
+        Log.d("BluetoothScan", "Scan démarré")
+    }
+
+    private fun stopScan() {
+        bluetoothLeScanner.stopScan(scanCallback)
+        Log.d("BluetoothScan", "Scan arrêté")
+    }
+
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val device = result.device
+            val deviceAddress = device.address
+            val deviceName = device.name ?: "Appareil inconnu"
+            if (devicesList.none { it.device.address == result.device.address }) {
+                if (uniqueMacAddresses.contains(deviceAddress) || uniqueDeviceNames.contains(deviceName)) {
+                    return // Ne pas ajouter si l'appareil est déjà présent
+                }            // Ajouter l'adresse MAC et le nom aux ensembles pour les suivre
+                uniqueMacAddresses.add(deviceAddress)
+                uniqueDeviceNames.add(deviceName)
+                devicesList.add(result)  // Ajouter l'appareil détecté
+                Log.d("BluetoothDevice", "Appareil détecté : ${result.device.name ?: "Inconnu"} - ${result.device.address}")
+            }
+        }
+        override fun onScanFailed(errorCode: Int) {
+            Toast.makeText(applicationContext, "Échec du scan : $errorCode", Toast.LENGTH_SHORT).show()
+        }
+    }
+
 }
+
 
 @Composable
 fun BluetoothEnableDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
@@ -190,7 +231,8 @@ fun BluetoothEnableDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 @Composable
 fun MainContentComponent(
     modifier: Modifier = Modifier,
-    onStartScan: () -> Unit
+    onStartScan: () -> Unit,
+    devices: List<ScanResult>
 ) {
     var isPressed by remember { mutableStateOf(false) }
 
@@ -201,7 +243,7 @@ fun MainContentComponent(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (isPressed) {
-            TriangleButtonClicked(onClick = { isPressed = false }, onStartScan = onStartScan)
+            TriangleButtonClicked(onClick = { isPressed = false }, onStartScan = onStartScan, devices)
         } else {
             TriangleButtonNotClicked(onClick = {
                 isPressed = true
@@ -249,7 +291,7 @@ fun TriangleButtonNotClicked(onClick: () -> Unit) {
 }
 
 @Composable
-fun TriangleButtonClicked(onClick: () -> Unit, onStartScan: () -> Unit) {
+fun TriangleButtonClicked(onClick: () -> Unit, onStartScan: () -> Unit, devices: List<ScanResult>) {
     Column(
         modifier = Modifier
             .clickable { onClick() }
@@ -283,17 +325,15 @@ fun TriangleButtonClicked(onClick: () -> Unit, onStartScan: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(16.dp))
 
-        DeviceList(
-            devices = listOf("Device 1", "Device 2", "Device 3")
-        )
+        DeviceList(devices)
     }
 }
 
 @Composable
-fun DeviceList(devices: List<String>) {
+fun DeviceList(devices: List<ScanResult>) {
     Column(modifier = Modifier.fillMaxWidth()) {
         devices.forEachIndexed { index, device ->
-            DeviceItem(deviceName = device, deviceNumber = "Numéro ${index + 1}")
+            DeviceItem(deviceName = device.device.name ?: "Appareil inconnu", deviceNumber = "Adresse: ${device.device.address}")
             if (index < devices.size - 1) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Divider(
