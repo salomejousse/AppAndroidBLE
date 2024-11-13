@@ -19,33 +19,14 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Divider
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -75,7 +56,7 @@ class ScanActivity : ComponentActivity() {
 
     private var isBluetoothEnabled by mutableStateOf(false)
     private var showBluetoothDialog by mutableStateOf(false)
-
+    private var isScanning by mutableStateOf(false)
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,11 +86,24 @@ class ScanActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
-                    MainContentComponent(
-                        modifier = Modifier.padding(innerPadding),
-                        onStartScan = { startBluetoothScan() },
-                        devices= devicesList
-                    )
+                    Column(
+                        modifier = Modifier.padding(innerPadding)
+                    ) {
+                        // Button to start and stop scan
+                        StartStopScanButton(
+                            isScanning = isScanning,
+                            onClick = {
+                                if (isScanning) {
+                                    stopScan()
+                                } else {
+                                    startScan()
+                                }
+                                isScanning = !isScanning
+                            }
+                        )
+                        // List of devices found during scan
+                        DeviceList(devicesList)
+                    }
                 }
             }
 
@@ -117,13 +111,11 @@ class ScanActivity : ComponentActivity() {
             if (showBluetoothDialog) {
                 BluetoothEnableDialog(
                     onConfirm = {
-                        // Lancer l'intention pour activer le Bluetooth
                         val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
                         //startActivityForResult(enableBtIntent, 1)
                         showBluetoothDialog = false
                     },
                     onDismiss = {
-                        // Fermer la fenêtre de dialogue sans rien faire
                         showBluetoothDialog = false
                     }
                 )
@@ -133,21 +125,15 @@ class ScanActivity : ComponentActivity() {
 
     private fun checkAndRequestPermissions() {
         val permissions = getRequiredPermissions()
-    // Vérifiez si toutes les permissions sont déjà accordées
         val permissionsToRequest = permissions.filter { permission ->
             ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
         }
-        if (permissionsToRequest.isNotEmpty()) {        // Si des permissions sont manquantes, les demander
+        if (permissionsToRequest.isNotEmpty()) {
             requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
-        } else {        // Si toutes les permissions sont déjà accordées
-            Toast.makeText(this, "Toutes les permissions sont déjà accordées", Toast.LENGTH_SHORT).show()        // Commencer le scan BLE ou toute autre action
+        } else {
+            Toast.makeText(this, "Toutes les permissions sont déjà accordées", Toast.LENGTH_SHORT).show()
             startScan()
         }
-    }
-
-    private fun startBluetoothScan() {
-        // Logique pour démarrer le scan Bluetooth
-        Toast.makeText(this, "Démarrage du scan BLE...", Toast.LENGTH_SHORT).show()
     }
 
     private fun getRequiredPermissions(): List<String> {
@@ -170,7 +156,7 @@ class ScanActivity : ComponentActivity() {
 
     private fun startScan() {
         bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
-        devicesList.clear() // Clear previous scan results
+        devicesList.clear()
         bluetoothLeScanner.startScan(scanCallback)
         Log.d("BluetoothScan", "Scan démarré")
     }
@@ -187,187 +173,122 @@ class ScanActivity : ComponentActivity() {
             val deviceName = device.name ?: "Appareil inconnu"
             if (devicesList.none { it.device.address == result.device.address }) {
                 if (uniqueMacAddresses.contains(deviceAddress) || uniqueDeviceNames.contains(deviceName)) {
-                    return // Ne pas ajouter si l'appareil est déjà présent
-                }            // Ajouter l'adresse MAC et le nom aux ensembles pour les suivre
+                    return
+                }
                 uniqueMacAddresses.add(deviceAddress)
                 uniqueDeviceNames.add(deviceName)
-                devicesList.add(result)  // Ajouter l'appareil détecté
+                devicesList.add(result)
                 Log.d("BluetoothDevice", "Appareil détecté : ${result.device.name ?: "Inconnu"} - ${result.device.address}")
             }
         }
+
         override fun onScanFailed(errorCode: Int) {
             Toast.makeText(applicationContext, "Échec du scan : $errorCode", Toast.LENGTH_SHORT).show()
         }
     }
 
-}
-
-
-@Composable
-fun BluetoothEnableDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = "Activer le Bluetooth") },
-        text = { Text(text = "Le Bluetooth n'est pas activé. Voulez-vous l'activer ?") },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                modifier = Modifier.padding(8.dp)
-            ) {
-                Text("Oui")
-            }
-        },
-        dismissButton = {
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier.padding(8.dp)
-            ) {
-                Text("Non")
-            }
-        }
-    )
-}
-
-@Composable
-fun MainContentComponent(
-    modifier: Modifier = Modifier,
-    onStartScan: () -> Unit,
-    devices: List<ScanResult>
-) {
-    var isPressed by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(top = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    @Composable
+    fun StartStopScanButton(
+        isScanning: Boolean,
+        onClick: () -> Unit
     ) {
-        if (isPressed) {
-            TriangleButtonClicked(onClick = { isPressed = false }, onStartScan = onStartScan, devices)
-        } else {
-            TriangleButtonNotClicked(onClick = {
-                isPressed = true
-                onStartScan()
-            })
-        }
-    }
-}
-
-@Composable
-fun TriangleButtonNotClicked(onClick: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .clickable { onClick() }
-            .padding(16.dp)
-            .fillMaxWidth()
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                fontWeight = FontWeight.Bold,
-                text = "Lancer le Scan BLE",
-                color = Color.Gray,
-                fontSize = 22.sp,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-            Image(
-                painter = painterResource(id = R.drawable.img_play),
-                contentDescription = "Play",
-                modifier = Modifier.size(60.dp)
-            )
-        }
-        Spacer(
+        Button(
+            onClick = onClick,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(4.dp)
-                .background(Color.Blue)
-                .align(Alignment.Start)
-                .padding(top = 8.dp)
-        )
-    }
-}
-
-@Composable
-fun TriangleButtonClicked(onClick: () -> Unit, onStartScan: () -> Unit, devices: List<ScanResult>) {
-    Column(
-        modifier = Modifier
-            .clickable { onClick() }
-            .padding(16.dp)
-            .fillMaxWidth()
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
+                .padding(16.dp)
+                .height(60.dp),
+            shape = MaterialTheme.shapes.small.copy(CornerSize(8.dp)),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Blue
+            )
         ) {
             Text(
+                text = if (isScanning) "Arrêter le Scan" else "Démarrer le Scan",
+                color = Color.White,
                 fontWeight = FontWeight.Bold,
-                text = "Scan BLE en cours ...",
-                color = Color.Gray,
-                fontSize = 22.sp,
-                modifier = Modifier.padding(end = 8.dp)
-            )
-            Image(
-                painter = painterResource(id = R.drawable.img_pause),
-                contentDescription = "Pause",
-                modifier = Modifier.size(60.dp)
+                fontSize = 18.sp
             )
         }
-        LinearProgressIndicator(
-            color = Color.Blue,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)
-                .height(4.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-
-        DeviceList(devices)
     }
-}
 
-@Composable
-fun DeviceList(devices: List<ScanResult>) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        devices.forEachIndexed { index, device ->
-            DeviceItem(deviceName = device.device.name ?: "Appareil inconnu", deviceNumber = "Adresse: ${device.device.address}")
-            if (index < devices.size - 1) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Divider(
-                    color = Color.Gray,
-                    thickness = 1.dp,
-                    modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .align(Alignment.CenterHorizontally)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+    @Composable
+    fun DeviceList(devices: List<ScanResult>) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            devices.forEachIndexed { index, device ->
+                DeviceItem(deviceName = device.device.name ?: "Appareil inconnu", deviceNumber = "Adresse: ${device.device.address}")
+                if (index < devices.size - 1) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Divider(
+                        color = Color.Gray,
+                        thickness = 1.dp,
+                        modifier = Modifier
+                            .fillMaxWidth(0.8f)
+                            .align(Alignment.CenterHorizontally)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
             }
         }
     }
-}
 
-@Composable
-fun DeviceItem(deviceName: String, deviceNumber: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .height(80.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = deviceName,
-            color = Color.Gray,
-            fontSize = 18.sp
-        )
-        Text(
-            text = deviceNumber,
-            color = Color.Gray,
-            fontSize = 18.sp
+    @Composable
+    fun DeviceItem(deviceName: String, deviceNumber: String) {
+        val context = LocalContext.current
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .height(80.dp)
+                .clickable {
+                    // Création d'un Intent pour lancer l'activité DeviceInteractionActivity
+                    val intent = Intent(context, ConnexionActivity::class.java).apply {
+                        putExtra("DEVICE_ADDRESS", deviceNumber) // Passer l'adresse de l'appareil
+                    }
+                    context.startActivity(intent)
+                },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = deviceName,
+                color = Color.DarkGray,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+            Text(
+                text = deviceNumber,
+                color = Color.Gray,
+                fontSize = 18.sp
+            )
+        }
+    }
+
+
+
+
+    @Composable
+    fun BluetoothEnableDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(text = "Activer le Bluetooth") },
+            text = { Text(text = "Le Bluetooth n'est pas activé. Voulez-vous l'activer ?") },
+            confirmButton = {
+                Button(
+                    onClick = onConfirm,
+                    modifier = Modifier.padding(8.dp)
+                ) {
+                    Text("Oui")
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.padding(8.dp)
+                ) {
+                    Text("Non")
+                }
+            }
         )
     }
 }
