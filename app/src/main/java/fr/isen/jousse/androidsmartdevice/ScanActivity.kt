@@ -1,12 +1,13 @@
 package fr.isen.jousse.androidsmartdevice
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
-import android.Manifest
-import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
@@ -17,7 +18,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,8 +26,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
@@ -48,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import fr.isen.jousse.androidsmartdevice.ui.theme.AndroidSmartDeviceTheme
 
 class ScanActivity : ComponentActivity() {
@@ -55,6 +56,7 @@ class ScanActivity : ComponentActivity() {
     private lateinit var bluetoothAdapter: BluetoothAdapter
     private lateinit var bluetoothLeScanner: android.bluetooth.le.BluetoothLeScanner
     private val devicesList = mutableStateListOf<ScanResult>()
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
@@ -65,6 +67,10 @@ class ScanActivity : ComponentActivity() {
         }
     }
 
+    private var isBluetoothEnabled by mutableStateOf(false)
+    private var showBluetoothDialog by mutableStateOf(false)
+
+    @SuppressLint("MissingPermission")
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,10 +79,12 @@ class ScanActivity : ComponentActivity() {
         bluetoothAdapter = bluetoothManager.adapter
 
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            Toast.makeText(this, "Bluetooth non disponible ou désactivé", Toast.LENGTH_SHORT).show()
-            finish()
-            return
+            showBluetoothDialog = true
+        } else {
+            isBluetoothEnabled = true
         }
+
+        checkAndRequestPermissions()
 
         setContent {
             AndroidSmartDeviceTheme {
@@ -97,6 +105,36 @@ class ScanActivity : ComponentActivity() {
                     )
                 }
             }
+
+            // Afficher la fenêtre de dialogue si Bluetooth n'est pas activé
+            if (showBluetoothDialog) {
+                BluetoothEnableDialog(
+                    onConfirm = {
+                        // Lancer l'intention pour activer le Bluetooth
+                        val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                        startActivityForResult(enableBtIntent, 1)
+                        showBluetoothDialog = false
+                    },
+                    onDismiss = {
+                        // Fermer la fenêtre de dialogue sans rien faire
+                        showBluetoothDialog = false
+                    }
+                )
+            }
+        }
+    }
+
+    private fun checkAndRequestPermissions() {
+        val permissions = getRequiredPermissions()
+    // Vérifiez si toutes les permissions sont déjà accordées
+        val permissionsToRequest = permissions.filter { permission ->
+            ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED
+        }
+        if (permissionsToRequest.isNotEmpty()) {        // Si des permissions sont manquantes, les demander
+            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+        } else {        // Si toutes les permissions sont déjà accordées
+            Toast.makeText(this, "Toutes les permissions sont déjà accordées", Toast.LENGTH_SHORT).show()        // Commencer le scan BLE ou toute autre action
+            //startScan()
         }
     }
 
@@ -122,6 +160,31 @@ class ScanActivity : ComponentActivity() {
             )
         }
     }
+}
+
+@Composable
+fun BluetoothEnableDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = "Activer le Bluetooth") },
+        text = { Text(text = "Le Bluetooth n'est pas activé. Voulez-vous l'activer ?") },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                modifier = Modifier.padding(8.dp)
+            ) {
+                Text("Oui")
+            }
+        },
+        dismissButton = {
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier.padding(8.dp)
+            ) {
+                Text("Non")
+            }
+        }
+    )
 }
 
 @Composable
@@ -249,38 +312,22 @@ fun DeviceList(devices: List<String>) {
 @Composable
 fun DeviceItem(deviceName: String, deviceNumber: String) {
     Row(
-        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(horizontal = 16.dp)
+            .height(80.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(36.dp)
-                .background(Color.Blue, shape = CircleShape)
-        ) {
-            Text(
-                text = deviceNumber.split(" ").last(),
-                color = Color.White,
-                fontSize = 14.sp
-            )
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
-
-        Column {
-            Text(
-                text = deviceName,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.Black
-            )
-            Text(
-                text = deviceNumber,
-                fontSize = 14.sp,
-                color = Color.Gray
-            )
-        }
+        Text(
+            text = deviceName,
+            color = Color.Gray,
+            fontSize = 18.sp
+        )
+        Text(
+            text = deviceNumber,
+            color = Color.Gray,
+            fontSize = 18.sp
+        )
     }
 }
