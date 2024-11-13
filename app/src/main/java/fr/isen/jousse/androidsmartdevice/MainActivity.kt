@@ -13,12 +13,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -27,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import fr.isen.jousse.androidsmartdevice.ui.theme.AndroidSmartDeviceTheme
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -35,11 +43,21 @@ class MainActivity : ComponentActivity() {
                 val context = LocalContext.current
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("AndroidSmartDevice") },
+                            colors = TopAppBarDefaults.smallTopAppBarColors(
+                                containerColor = Color.Blue,
+                                titleContentColor = Color.White
+                            )
+                        )
+                    },
                     bottomBar = {
                         Button(
                             onClick = {
                                 context.startActivity(Intent(context, ScanActivity::class.java))
                             },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Blue),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp)
@@ -54,6 +72,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
 
 @Composable
 fun MainContentComponent(innerPadding: PaddingValues) {
@@ -76,20 +95,10 @@ fun MainContentComponent(innerPadding: PaddingValues) {
             modifier = Modifier.padding(bottom = 24.dp)
         )
         Image(
-            painter = painterResource(id = R.drawable.bluetooth_image),
+            painter = painterResource(id = R.drawable.img_blue),
             contentDescription = "Bluetooth Image",
             modifier = Modifier.size(100.dp)
         )
-        //Button(
-            //onClick = {},
-            //modifier = Modifier
-                //.padding(top = 24.dp)
-                //.clip(RoundedCornerShape(50))
-                //.fillMaxWidth(0.7f)
-        //)
-        // {
-            //Text(text = "COMMENCER")
-        //}
     }
 }
 

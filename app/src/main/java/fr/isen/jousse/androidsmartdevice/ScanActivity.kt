@@ -1,14 +1,18 @@
 package fr.isen.jousse.androidsmartdevice
 
-//import androidx.activity.enableEdgeToEdge
-//import androidx.compose.foundation.Image
-//import androidx.compose.foundation.layout.Arrangement
-//import androidx.compose.foundation.layout.fillMaxWidth
-//import androidx.compose.material3.Divider
-//import androidx.compose.ui.res.painterResource
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.Manifest
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
+import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +37,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -46,9 +51,33 @@ import androidx.compose.ui.unit.sp
 import fr.isen.jousse.androidsmartdevice.ui.theme.AndroidSmartDeviceTheme
 
 class ScanActivity : ComponentActivity() {
+
+    private lateinit var bluetoothAdapter: BluetoothAdapter
+    private lateinit var bluetoothLeScanner: android.bluetooth.le.BluetoothLeScanner
+    private val devicesList = mutableStateListOf<ScanResult>()
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.all { it.value }) {
+            Toast.makeText(this, "Permissions Bluetooth accordées", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, "Permissions Bluetooth requises", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothAdapter = bluetoothManager.adapter
+
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
+            Toast.makeText(this, "Bluetooth non disponible ou désactivé", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
         setContent {
             AndroidSmartDeviceTheme {
                 Scaffold(
@@ -62,15 +91,44 @@ class ScanActivity : ComponentActivity() {
                         )
                     }
                 ) { innerPadding ->
-                    MainContentComponent(Modifier.padding(innerPadding))
+                    MainContentComponent(
+                        modifier = Modifier.padding(innerPadding),
+                        onStartScan = { startBluetoothScan() }
+                    )
                 }
             }
+        }
+    }
+
+    private fun startBluetoothScan() {
+        // Logique pour démarrer le scan Bluetooth
+        Toast.makeText(this, "Démarrage du scan BLE...", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun getRequiredPermissions(): List<String> {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
+        } else {
+            listOf(
+                Manifest.permission.BLUETOOTH,
+                Manifest.permission.BLUETOOTH_ADMIN,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            )
         }
     }
 }
 
 @Composable
-fun MainContentComponent(modifier: Modifier = Modifier) {
+fun MainContentComponent(
+    modifier: Modifier = Modifier,
+    onStartScan: () -> Unit
+) {
     var isPressed by remember { mutableStateOf(false) }
 
     Column(
@@ -80,12 +138,16 @@ fun MainContentComponent(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         if (isPressed) {
-            TriangleButtonClicked(onClick = { isPressed = !isPressed })
+            TriangleButtonClicked(onClick = { isPressed = false }, onStartScan = onStartScan)
         } else {
-            TriangleButtonNotClicked(onClick = { isPressed = !isPressed })
+            TriangleButtonNotClicked(onClick = {
+                isPressed = true
+                onStartScan()
+            })
         }
     }
 }
+
 @Composable
 fun TriangleButtonNotClicked(onClick: () -> Unit) {
     Column(
@@ -100,30 +162,31 @@ fun TriangleButtonNotClicked(onClick: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
+                fontWeight = FontWeight.Bold,
                 text = "Lancer le Scan BLE",
                 color = Color.Gray,
-                fontSize = 14.sp,
+                fontSize = 22.sp,
                 modifier = Modifier.padding(end = 8.dp)
             )
             Image(
-                painter = painterResource(id = R.drawable.play),
+                painter = painterResource(id = R.drawable.img_play),
                 contentDescription = "Play",
                 modifier = Modifier.size(60.dp)
             )
         }
         Spacer(
             modifier = Modifier
-                .fillMaxWidth(0.5f)
-                .height(2.dp)
+                .fillMaxWidth()
+                .height(4.dp)
                 .background(Color.Blue)
                 .align(Alignment.Start)
-                .padding(top = 4.dp)
+                .padding(top = 8.dp)
         )
     }
 }
 
 @Composable
-fun TriangleButtonClicked(onClick: () -> Unit) {
+fun TriangleButtonClicked(onClick: () -> Unit, onStartScan: () -> Unit) {
     Column(
         modifier = Modifier
             .clickable { onClick() }
@@ -136,13 +199,14 @@ fun TriangleButtonClicked(onClick: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
+                fontWeight = FontWeight.Bold,
                 text = "Scan BLE en cours ...",
                 color = Color.Gray,
-                fontSize = 14.sp,
+                fontSize = 22.sp,
                 modifier = Modifier.padding(end = 8.dp)
             )
             Image(
-                painter = painterResource(id = R.drawable.pause),
+                painter = painterResource(id = R.drawable.img_pause),
                 contentDescription = "Pause",
                 modifier = Modifier.size(60.dp)
             )
